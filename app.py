@@ -8,10 +8,10 @@ app = Flask(__name__)
 
 # --- Meta Configuration ---
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "rishav_monk_mode_123")
-META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN")
+META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN", "").strip()
 
 # --- AI Configuration ---
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Define the Bot's Identity and Strict Rules (The System Prompt)

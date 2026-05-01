@@ -1,17 +1,17 @@
 from flask import Flask, request, jsonify
 import google.generativeai as genai
 import requests
+import os
+
 
 app = Flask(__name__)
 
 # --- Meta Configuration ---
-VERIFY_TOKEN = "rishav_monk_mode_123"
-# Replace with your actual Meta Access Token (from the API Setup page)
-META_ACCESS_TOKEN = "EAAeyWz62TOwBRePinm0EdgfAftZCGZBcV05IS010RhjFEEyHhtJAreZBIpcIyUHoWdiZC4viR0sx2OsiGc1LD8CxE5pcsJTNTuqOZCZAYgMt3JvLAxx3DEbFbC0mGv1PIC4uh7XrbrDAb08MZBLooItqGeM2xKl7wWmoyfP00dfrMddUs7D9Nq1w74b6ex1TAZDZD"
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "rishav_monk_mode_123")
+META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN")
 
 # --- AI Configuration ---
-# Replace with your actual Google AI Studio API Key
-GEMINI_API_KEY = "AIzaSyD5lh16BzTPE9wsV0m6YN_W-pULNfyFajY"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Define the Bot's Identity and Strict Rules (The System Prompt)

@@ -21,8 +21,9 @@ Your tone is highly professional, stoic, confident, and direct.
 CRITICAL RULE: Always analyze the user's language and mirror it perfectly.
 - If they speak English, reply in English.
 - If they speak Hindi, reply in Hindi.
-- If they use Hinglish (Hindi written in the English alphabet), you MUST reply in natural, highly professional Hinglish.
+- If they use Hinglish, you MUST reply in natural, highly professional Hinglish.
 Keep your responses concise, highly structured, and focused on business ROI.
+Goal: To engage the user and politely ask for their WhatsApp number for further business details.
 """
 
 # --- 3. HEALTH CHECK ---
@@ -46,152 +47,116 @@ def webhook():
     if request.method == 'POST':
         data = request.get_json()
 
-        # 🚨 X-RAY VISION: Print everything beautifully in logs
         print("\n" + "="*50)
         print("🚨 RAW PAYLOAD RECEIVED FROM META:")
         print(data)
         print("="*50 + "\n")
 
-       # --- ROUTE A: INSTAGRAM ---
-if data.get("object") == "instagram":
-
-    try:
-
-        for entry in data.get("entry", []):
-
-            for change in entry.get("changes", []):
-
-                field = change.get("field")
-                value = change.get("value", {})
-
-                print("🔥 INSTAGRAM CHANGE:")
-                print(change)
-
-                # =========================
-                # COMMENT EVENTS
-                # =========================
-                if field == "comments":
-
-                    comment_text = value.get("text", "")
-                    comment_id = value.get("id")
-
-                    user = value.get("from", {})
-                    username = user.get("username")
-                    user_id = user.get("id")
-
-                    print(f"💬 COMMENT: {comment_text}")
-                    print(f"👤 USERNAME: {username}")
-
-                    TRIGGERS = [
-                        "price",
-                        "details",
-                        "info",
-                        "interested",
-                        "dm",
-                        "send"
-                    ]
-
-                    # FILTER COMMENTS
-                    if any(
-                        word in comment_text.lower()
-                        for word in TRIGGERS
-                    ):
-
-                        # =========================
-                        # PUBLIC COMMENT REPLY
-                        # =========================
-                        reply_url = f"https://graph.facebook.com/v25.0/{comment_id}/replies"
-
-                        reply_headers = {
-                            "Authorization": f"Bearer {IG_ACCESS_TOKEN}"
-                        }
-
-                        reply_payload = {
-                            "message": "Sent you details in DM 👌"
-                        }
-
-                        reply_response = requests.post(
-                            reply_url,
-                            headers=reply_headers,
-                            data=reply_payload
-                        )
-
-                        print("✅ COMMENT REPLY SENT")
-                        print(reply_response.text)
-
-                        # =========================
-                        # SEND DM
-                        # =========================
-                        dm_url = "https://graph.facebook.com/v25.0/me/messages"
-
-                        dm_headers = {
-                            "Authorization": f"Bearer {IG_ACCESS_TOKEN}",
-                            "Content-Type": "application/json"
-                        }
-
-                        dm_payload = {
-                            "recipient": {
-                                "id": user_id
-                            },
-                            "message": {
-                                "text": (
-                                    "Hey 👋\n\n"
-                                    "Thanks for your comment.\n\n"
-                                    "Aapko details WhatsApp pe chahiye?"
-                                )
+        # ==========================================
+        # ROUTE A: INSTAGRAM (Comments & DMs)
+        # ==========================================
+        if data.get("object") == "instagram":
+            try:
+                for entry in data.get("entry", []):
+                    
+                    # 1. HANDLE IG DMs (Messages come under 'messaging')
+                    for messaging_event in entry.get("messaging", []):
+                        if 'message' in messaging_event and 'text' in messaging_event['message']:
+                            sender_id = messaging_event['sender']['id']
+                            user_msg = messaging_event['message']['text']
+                            
+                            print(f"📩 IG DM RECEIVED: '{user_msg}'")
+                            
+                            # Gemini AI Reply for IG DM
+                            response = client.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=f"{aero_persona}\nUser: {user_msg}"
+                            )
+                            bot_reply = response.text
+                            print(f"🤖 AI IG REPLY: {bot_reply}")
+                            
+                            # Send DM via Meta Graph API
+                            dm_url = "https://graph.facebook.com/v25.0/me/messages"
+                            headers = {
+                                "Authorization": f"Bearer {IG_ACCESS_TOKEN}",
+                                "Content-Type": "application/json"
                             }
-                        }
+                            payload = {
+                                "recipient": {"id": sender_id},
+                                "message": {"text": bot_reply}
+                            }
+                            requests.post(dm_url, headers=headers, json=payload)
 
-                        dm_response = requests.post(
-                            dm_url,
-                            headers=dm_headers,
-                            json=dm_payload
-                        )
 
-                        print("✅ DM SENT")
-                        print(dm_response.text)
+                    # 2. HANDLE IG COMMENTS (Comments come under 'changes')
+                    for change in entry.get("changes", []):
+                        field = change.get("field")
+                        value = change.get("value", {})
 
-                # =========================
-                # DM EVENTS
-                # =========================
-                elif field == "messages":
+                        if field == "comments":
+                            comment_text = value.get("text", "")
+                            comment_id = value.get("id")
+                            user = value.get("from", {})
+                            username = user.get("username")
+                            user_id = user.get("id") # Needed to DM them
 
-                    if "message" in value:
+                            print(f"💬 IG COMMENT: {comment_text} | BY: {username}")
 
-                        sender = value.get("from")
-                        message_data = value.get("message", {})
+                            TRIGGERS = ["price", "details", "info", "interested", "dm", "send"]
 
-                        user_msg = message_data.get("text")
+                            # If comment contains trigger words
+                            if any(word in comment_text.lower() for word in TRIGGERS):
+                                
+                                headers = {"Authorization": f"Bearer {IG_ACCESS_TOKEN}"}
+                                
+                                # A. Reply publicly to the comment
+                                reply_url = f"https://graph.facebook.com/v25.0/{comment_id}/replies"
+                                reply_payload = {"message": "Sent you the details in DM! 🚀"}
+                                requests.post(reply_url, headers=headers, data=reply_payload)
+                                print("✅ PUBLIC COMMENT REPLY SENT")
 
-                        print(f"📩 IG DM: {user_msg}")
+                                # B. Auto-DM the user
+                                dm_url = "https://graph.facebook.com/v25.0/me/messages"
+                                dm_headers = {
+                                    "Authorization": f"Bearer {IG_ACCESS_TOKEN}",
+                                    "Content-Type": "application/json"
+                                }
+                                dm_payload = {
+                                    "recipient": {"id": user_id},
+                                    "message": {"text": "Hey 👋\n\nThanks for your comment. We provide elite AI automation services. Could you please share your WhatsApp number so our team can send you the full portfolio and quotation?"}
+                                }
+                                requests.post(dm_url, headers=dm_headers, json=dm_payload)
+                                print("✅ AUTO-DM SENT FROM COMMENT")
 
-    except Exception as e:
-        print(f"❌ IG Processing Error: {e}")
+            except Exception as e:
+                print(f"❌ IG Processing Error: {e}")
 
-        # --- ROUTE B: WHATSAPP ---
+        # ==========================================
+        # ROUTE B: WHATSAPP
+        # ==========================================
         elif data.get("object") == "whatsapp_business_account":
             try:
-                for entry in data['entry']:
-                    for change in entry['changes']:
-                        value = change['value']
+                for entry in data.get('entry', []):
+                    for change in entry.get('changes', []):
+                        value = change.get('value', {})
                         if 'messages' in value:
                             message = value['messages'][0]
-                            if message['type'] == 'text':
+                            if message.get('type') == 'text':
                                 phone_number_id = value['metadata']['phone_number_id']
                                 from_number = message['from']
                                 user_msg = message['text']['body']
                                 
                                 print(f"✅ WA MESSAGE EXTRACTED: '{user_msg}' from {from_number}")
                                 
-                                # Generate AI reply using New SDK
+                                # Gemini AI Reply for WA
                                 response = client.models.generate_content(
                                     model='gemini-2.5-flash',
                                     contents=f"{aero_persona}\nUser: {user_msg}"
                                 )
                                 bot_reply = response.text
-                                print(f"🤖 AI REPLY GENERATED: {bot_reply}")
+                                print(f"🤖 AI WA REPLY: {bot_reply}")
                                 
-                                # Send to WhatsApp API
+                                # Send WhatsApp Reply
                                 url = f"https://graph.facebook.com/v25.0/{phone_number_id}/messages"
                                 headers = {
                                     "Authorization": f"Bearer {META_ACCESS_TOKEN}",
@@ -202,18 +167,12 @@ if data.get("object") == "instagram":
                                     "to": from_number,
                                     "text": {"body": bot_reply}
                                 }
-                                meta_response = requests.post(url, headers=headers, json=payload)
-                                print(f"📤 META API STATUS: {meta_response.status_code} - {meta_response.text}")
+                                requests.post(url, headers=headers, json=payload)
             except Exception as e:
                 print(f"❌ WA Processing Error: {e}")
 
         return jsonify({"status": "success"}), 200
 
 if __name__ == "__main__":
-    app.run(
-    host="0.0.0.0",
-    port=int(os.environ.get("PORT", 10000))
-)
-  
-    
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
     

@@ -1,116 +1,96 @@
+import os
+import requests
 from flask import Flask, request, jsonify
 import google.generativeai as genai
-import requests
-import os
-
 
 app = Flask(__name__)
 
-# --- Meta Configuration ---
+# --- 1. THE VAULT (Server fetches keys dynamically) ---
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "rishav_monk_mode_123")
 META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN", "").strip()
-
-# --- AI Configuration ---
+IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+
+# Initialize Google Gemini AI
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Define the Bot's Identity and Strict Rules (The System Prompt)
+# --- 2. THE BRAIN (System Instructions & Persona) ---
 aero_persona = """
 You are Aero Bot, the elite AI automation consultant and sales closer for Aero Agency.
 Your tone is highly professional, stoic, confident, and direct. 
-CRITICAL RULE: Always reply in the exact language the user speaks. If they speak English, reply in English. If they speak Hindi, reply in Hindi. If they use Hinglish (Hindi written in English alphabet), you must reply in natural, professional Hinglish.
-Keep your responses concise and highly structured.
+CRITICAL RULE: Always analyze the user's language and mirror it perfectly.
+- If they speak English, reply in English.
+- If they speak Hindi, reply in Hindi.
+- If they use Hinglish (Hindi written in the English alphabet), you MUST reply in natural, highly professional Hinglish.
+Keep your responses concise, highly structured, and focused on business ROI.
 """
 
-# Initialize the 2.5 Flash model WITH the new persona injected
-model = genai.GenerativeModel(
-    model_name='gemini-2.5-flash',
-    system_instruction=aero_persona
-)
+# --- 3. THE TRAFFIC CONTROLLER (Webhook logic for IG & WA) ---
+@app.route('/webhook', methods=['GET', 'POST'])
+def webhook():
+    # GET Request: Meta Webhook Verification
+    if request.method == 'GET':
+        mode = request.args.get("hub.mode")
+        token = request.args.get("hub.verify_token")
+        challenge = request.args.get("hub.challenge")
+        
+        if mode == "subscribe" and token == VERIFY_TOKEN:
+            return challenge, 200
+        return "Forbidden", 403
 
+    # POST Request: Processing incoming messages
+    if request.method == 'POST':
+        data = request.get_json()
 
-# Outbound Messaging Engine
-def send_whatsapp_message(recipient_number, message_text, phone_number_id):
-    url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
-    headers = {
-        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": recipient_number,
-        "type": "text",
-        "text": {"body": message_text}
-    }
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code == 200:
-            print(f"📤 SUCCESS: Message sent back to WhatsApp!")
-        else:
-            print(f"❌ ERROR: Failed to send. Meta responded with: {response.text}")
-    except Exception as e:
-        print(f"❌ CRITICAL ERROR during outbound request: {e}")
+        # --- ROUTE A: Handle INSTAGRAM Messages ---
+        if data.get("object") == "instagram":
+            try:
+                for entry in data['entry']:
+                    for messaging_event in entry.get('messaging', []):
+                        if 'message' in messaging_event and 'text' in messaging_event['message']:
+                            user_msg = messaging_event['message']['text']
+                            print(f"🔥 IG MESSAGE RECEIVED: {user_msg}")
+                            # TODO: Add Gemini AI reply and number extraction logic here
+            except Exception as e:
+                print(f"IG Error: {e}")
 
-# 1. Meta verification route
-@app.route('/webhook', methods=['GET'])
-def verify_webhook():
-    mode = request.args.get("hub.mode")
-    token = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
-
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        print("✅ Webhook Verified successfully!")
-        return challenge, 200
-    else:
-        return "Verification failed", 403
-
-# 2. Webhook endpoint to receive incoming WhatsApp messages
-@app.route('/webhook', methods=['POST'])
-def receive_message():
-    data = request.json
-
-    try:
-        if 'object' in data and data['object'] == 'whatsapp_business_account':
-            entry = data['entry'][0]
-            changes = entry['changes'][0]
-            value = changes['value']
-
-            if 'messages' in value:
-                message = value['messages'][0]
-                
-                if message['type'] == 'text':
-                    sender_number = message['from']
-                    message_text = message['text']['body']
-                    # Dynamically extracting your test bot's phone number ID
-                    phone_number_id = value['metadata']['phone_number_id']
-
-                    print("\n" + "="*40)
-                    print(f"📩 NEW MESSAGE RECEIVED!")
-                    print(f"📱 From: {sender_number}")
-                    print(f"💬 User says: {message_text}")
-                    print("-" * 40)
-                    print("🤖 Generating AI Response...")
-                    
-                    # AI Processing
-                    response = model.generate_content(message_text)
-                    bot_reply = response.text
-
-                    print(f"🧠 AI Reply: \n{bot_reply}")
-                    print("-" * 40)
-                    print("🚀 Routing reply back to Meta API...")
-                    
-                    # Triggering the outbound message
-                    send_whatsapp_message(sender_number, bot_reply, phone_number_id)
-                    
-                    print("="*40 + "\n")
+        # --- ROUTE B: Handle WHATSAPP Messages ---
+        elif data.get("object") == "whatsapp_business_account":
+            try:
+                for entry in data['entry']:
+                    for change in entry['changes']:
+                        value = change['value']
+                        if 'messages' in value:
+                            message = value['messages'][0]
+                            if message['type'] == 'text':
+                                phone_number_id = value['metadata']['phone_number_id']
+                                from_number = message['from']
+                                user_msg = message['text']['body']
+                                
+                                print(f"✅ WA MESSAGE RECEIVED: {user_msg}")
+                                
+                                # Generate AI response using Gemini
+                                model = genai.GenerativeModel('gemini-2.5-flash')
+                                response = model.generate_content(aero_persona + "\nUser: " + user_msg)
+                                bot_reply = response.text
+                                
+                                # Send reply back to WhatsApp via Meta Graph API
+                                url = f"https://graph.facebook.com/v25.0/{phone_number_id}/messages"
+                                headers = {
+                                    "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+                                    "Content-Type": "application/json"
+                                }
+                                payload = {
+                                    "messaging_product": "whatsapp",
+                                    "to": from_number,
+                                    "text": {"body": bot_reply}
+                                }
+                                requests.post(url, headers=headers, json=payload)
+            except Exception as e:
+                print(f"WA Error: {e}")
 
         return jsonify({"status": "success"}), 200
 
-    except Exception as e:
-        print(f"Error parsing the webhook payload: {e}")
-        return jsonify({"status": "error"}), 500
-
 if __name__ == "__main__":
-    print("🚀 Server is running on port 5000...")
-    app.run(port=5000) 
+    app.run(port=10000, debug=True)
     

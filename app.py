@@ -52,17 +52,121 @@ def webhook():
         print(data)
         print("="*50 + "\n")
 
-        # --- ROUTE A: INSTAGRAM ---
-        if data.get("object") == "instagram":
-            try:
-                for entry in data['entry']:
-                    for messaging_event in entry.get('messaging', []):
-                        if 'message' in messaging_event and 'text' in messaging_event['message']:
-                            sender_id = messaging_event['sender']['id']
-                            user_msg = messaging_event['message']['text']
-                            print(f"🔥 IG MESSAGE EXTRACTED: '{user_msg}' from ID: {sender_id}")
-            except Exception as e:
-                print(f"❌ IG Processing Error: {e}")
+       # --- ROUTE A: INSTAGRAM ---
+if data.get("object") == "instagram":
+
+    try:
+
+        for entry in data.get("entry", []):
+
+            for change in entry.get("changes", []):
+
+                field = change.get("field")
+                value = change.get("value", {})
+
+                print("🔥 INSTAGRAM CHANGE:")
+                print(change)
+
+                # =========================
+                # COMMENT EVENTS
+                # =========================
+                if field == "comments":
+
+                    comment_text = value.get("text", "")
+                    comment_id = value.get("id")
+
+                    user = value.get("from", {})
+                    username = user.get("username")
+                    user_id = user.get("id")
+
+                    print(f"💬 COMMENT: {comment_text}")
+                    print(f"👤 USERNAME: {username}")
+
+                    TRIGGERS = [
+                        "price",
+                        "details",
+                        "info",
+                        "interested",
+                        "dm",
+                        "send"
+                    ]
+
+                    # FILTER COMMENTS
+                    if any(
+                        word in comment_text.lower()
+                        for word in TRIGGERS
+                    ):
+
+                        # =========================
+                        # PUBLIC COMMENT REPLY
+                        # =========================
+                        reply_url = f"https://graph.facebook.com/v25.0/{comment_id}/replies"
+
+                        reply_headers = {
+                            "Authorization": f"Bearer {IG_ACCESS_TOKEN}"
+                        }
+
+                        reply_payload = {
+                            "message": "Sent you details in DM 👌"
+                        }
+
+                        reply_response = requests.post(
+                            reply_url,
+                            headers=reply_headers,
+                            data=reply_payload
+                        )
+
+                        print("✅ COMMENT REPLY SENT")
+                        print(reply_response.text)
+
+                        # =========================
+                        # SEND DM
+                        # =========================
+                        dm_url = "https://graph.facebook.com/v25.0/me/messages"
+
+                        dm_headers = {
+                            "Authorization": f"Bearer {IG_ACCESS_TOKEN}",
+                            "Content-Type": "application/json"
+                        }
+
+                        dm_payload = {
+                            "recipient": {
+                                "id": user_id
+                            },
+                            "message": {
+                                "text": (
+                                    "Hey 👋\n\n"
+                                    "Thanks for your comment.\n\n"
+                                    "Aapko details WhatsApp pe chahiye?"
+                                )
+                            }
+                        }
+
+                        dm_response = requests.post(
+                            dm_url,
+                            headers=dm_headers,
+                            json=dm_payload
+                        )
+
+                        print("✅ DM SENT")
+                        print(dm_response.text)
+
+                # =========================
+                # DM EVENTS
+                # =========================
+                elif field == "messages":
+
+                    if "message" in value:
+
+                        sender = value.get("from")
+                        message_data = value.get("message", {})
+
+                        user_msg = message_data.get("text")
+
+                        print(f"📩 IG DM: {user_msg}")
+
+    except Exception as e:
+        print(f"❌ IG Processing Error: {e}")
 
         # --- ROUTE B: WHATSAPP ---
         elif data.get("object") == "whatsapp_business_account":
@@ -106,5 +210,10 @@ def webhook():
         return jsonify({"status": "success"}), 200
 
 if __name__ == "__main__":
-    app.run(port=10000, debug=True)
+    app.run(
+    host="0.0.0.0",
+    port=int(os.environ.get("PORT", 10000))
+)
+  
+    
     

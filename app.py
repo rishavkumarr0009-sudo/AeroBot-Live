@@ -26,6 +26,10 @@ Keep your responses concise, highly structured, and focused on business ROI.
 """
 
 # --- 3. THE TRAFFIC CONTROLLER (Webhook logic for IG & WA) ---
+# --- HEALTH CHECK --- (To keep Render Happy)
+@app.route('/',methods=['GET'])
+def home():
+    return "Aero Bot Server is Running!", 200
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     # GET Request: Meta Webhook Verification
@@ -93,4 +97,3 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(port=10000, debug=True)
-    

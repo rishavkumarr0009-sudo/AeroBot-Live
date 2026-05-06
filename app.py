@@ -87,7 +87,6 @@ def webhook():
                             }
                             requests.post(dm_url, headers=headers, json=payload)
 
-
                     # 2. HANDLE IG COMMENTS (Comments come under 'changes')
                     for change in entry.get("changes", []):
                         field = change.get("field")
